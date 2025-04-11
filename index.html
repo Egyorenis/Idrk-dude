@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Three.js Movement Game</title>
+    <style>
+      body { margin: 0; overflow: hidden; }
+      canvas { display: block; }
+    </style>
+  </head>
+  <body>
+    <script type="module">
+      import * as THREE from 'https://cdn.skypack.dev/three@0.158.0';
+      import { PointerLockControls } from 'https://cdn.skypack.dev/three@0.158.0/examples/jsm/controls/PointerLockControls';
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x87ceeb); // Sky blue background
+
+      const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+      const renderer = new THREE.WebGLRenderer();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      document.body.appendChild(renderer.domElement);
+
+      // Lighting
+      const light = new THREE.HemisphereLight(0xffffff, 0x444444);
+      light.position.set(0, 200, 0);
+      scene.add(light);
+
+      // Ground
+      const groundGeometry = new THREE.PlaneGeometry(1000, 1000, 100, 100);
+      groundGeometry.rotateX(-Math.PI / 2);
+      const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x228B22 });
+
+      // Procedurally modify vertices
+      const position = groundGeometry.attributes.position;
+      for (let i = 0; i < position.count; i++) {
+        position.setY(i, Math.random() * 2); // bumpy terrain
+      }
+      position.needsUpdate = true;
+
+      const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+      scene.add(ground);
+
+      // Controls
+      const controls = new PointerLockControls(camera, document.body);
+      document.body.addEventListener('click', () => controls.lock());
+      scene.add(controls.getObject());
+
+      const velocity = new THREE.Vector3();
+      const direction = new THREE.Vector3();
+      const onGround = { value: false };
+
+      const move = { forward: false, backward: false, left: false, right: false, shift: false };
+
+      document.addEventListener('keydown', (e) => {
+        switch (e.code) {
+          case 'KeyW': move.forward = true; break;
+          case 'KeyS': move.backward = true; break;
+          case 'KeyA': move.left = true; break;
+          case 'KeyD': move.right = true; break;
+          case 'ShiftLeft': move.shift = true; break;
+          case 'Space':
+            if (onGround.value) {
+              velocity.y += 10;
+              onGround.value = false;
+            }
+            break;
+        }
+      });
+      document.addEventListener('keyup', (e) => {
+        switch (e.code) {
+          case 'KeyW': move.forward = false; break;
+          case 'KeyS': move.backward = false; break;
+          case 'KeyA': move.left = false; break;
+          case 'KeyD': move.right = false; break;
+          case 'ShiftLeft': move.shift = false; break;
+        }
+      });
+
+      // Floor detection
+      const raycaster = new THREE.Raycaster();
+
+      let prevTime = performance.now();
+      const clock = new THREE.Clock();
+
+      function animate() {
+        requestAnimationFrame(animate);
+
+        const time = performance.now();
+        const delta = (time - prevTime) / 1000;
+
+        direction.z = Number(move.forward) - Number(move.backward);
+        direction.x = Number(move.right) - Number(move.left);
+        direction.normalize();
+
+        const speed = move.shift ? 10 : 5;
+
+        if (controls.isLocked) {
+          velocity.x -= velocity.x * 10.0 * delta;
+          velocity.z -= velocity.z * 10.0 * delta;
+
+          velocity.y -= 25 * delta; // gravity
+
+          if (direction.z !== 0) velocity.z -= direction.z * speed * delta;
+          if (direction.x !== 0) velocity.x -= direction.x * speed * delta;
+
+          controls.moveRight(-velocity.x * delta);
+          controls.moveForward(-velocity.z * delta);
+
+          controls.getObject().position.y += velocity.y * delta;
+
+          // Raycast to check for ground contact
+          raycaster.set(controls.getObject().position, new THREE.Vector3(0, -1, 0));
+          const intersects = raycaster.intersectObject(ground);
+
+          if (intersects.length > 0 && intersects[0].distance < 1.75) {
+            velocity.y = Math.max(0, velocity.y);
+            controls.getObject().position.y = intersects[0].point.y + 1.75;
+            onGround.value = true;
+          } else {
+            onGround.value = false;
+          }
+        }
+
+        prevTime = time;
+        renderer.render(scene, camera);
+      }
+
+      animate();
+      window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+    </script>
+  </body>
+</html>
